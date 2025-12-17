@@ -1,5 +1,9 @@
-import { createAdminClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 interface ClayPersonData {
   first_name?: string
@@ -18,16 +22,28 @@ interface ClayPersonData {
   company_linkedin_url?: string
 }
 
-export async function POST(request: Request) {
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   try {
-    const body = await request.json()
-    const supabase = createAdminClient()
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    const body = await req.json()
 
     // Handle both single object and array of objects
     const records: ClayPersonData[] = Array.isArray(body) ? body : [body]
 
     if (records.length === 0) {
-      return NextResponse.json({ error: 'No data provided' }, { status: 400 })
+      return new Response(
+        JSON.stringify({ error: 'No data provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
     // Map to allowed fields only
@@ -54,21 +70,20 @@ export async function POST(request: Request) {
       .select('id')
 
     if (error) {
-      return NextResponse.json(
-        { error: 'Failed to insert: ' + error.message },
-        { status: 500 }
+      return new Response(
+        JSON.stringify({ error: 'Failed to insert: ' + error.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      inserted: data?.length || 0,
-    })
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-    return NextResponse.json(
-      { error: 'Server error: ' + errorMessage },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ success: true, inserted: data?.length || 0 }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Server error: ' + (error as Error).message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
-}
+})
